@@ -100,7 +100,7 @@ export default function Dashboard() {
         {/* Map Visualization Viewport */}
         <div className="flex-1 relative overflow-hidden rounded-2xl group border border-slate-700/50 bg-[#0d1527] shadow-2xl">
           <Map
-            mapboxAccessToken="MAPBOX_TOKEN_REMOVED"
+            mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
             initialViewState={{
               longitude: 85.3240, // Kathmandu Nepal Base
               latitude: 27.7172,

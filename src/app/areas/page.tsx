@@ -8,7 +8,7 @@ import { MapPinned, Plus, Trash2, UserPlus, UserMinus, Save, X } from 'lucide-re
 import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-const MAPBOX_TOKEN = 'MAPBOX_TOKEN_REMOVED';
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 const AREA_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
 // Generate a GeoJSON circle polygon from center + radius
