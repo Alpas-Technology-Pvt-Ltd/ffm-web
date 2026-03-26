@@ -40,6 +40,7 @@ export default function ReportsPage() {
     });
 
     return () => { unsubTechs(); unsubTasks(); unsubLogs(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getTechName = (uid: string) => {

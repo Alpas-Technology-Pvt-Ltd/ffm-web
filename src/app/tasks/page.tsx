@@ -4,11 +4,12 @@ import Sidebar from '@/components/Sidebar';
 import AuthGuard from '@/components/AuthGuard';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { Zap, Target, Plus, Send, AlertCircle, Edit3, Check, X, MessageSquare, RefreshCcw, User, Phone, MapPin, Clock, Image as ImageIcon } from 'lucide-react';
+import { Zap, Target, Plus, Send, AlertCircle, Edit3, Check, X, MessageSquare, RefreshCcw, User, Phone, MapPin, Clock, Image as ImageIcon, Link2 } from 'lucide-react';
 
 export default function TasksPage() {
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [liveTasks, setLiveTasks] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [taskComments, setTaskComments] = useState<any[]>([]);
@@ -30,6 +31,7 @@ export default function TasksPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [linkedComplaint, setLinkedComplaint] = useState('');
 
   useEffect(() => {
     if (!db) return;
@@ -49,10 +51,20 @@ export default function TasksPage() {
       setLiveTasks(data);
     });
 
+    // Fetch open complaints for linking
+    const complaintsQuery = query(collection(db, 'complaints'), where('status', 'in', ['open', 'in_progress']));
+    const unsubComplaints = onSnapshot(complaintsQuery, (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      setComplaints(data);
+    });
+
     return () => {
       unsubTechs();
       unsubTasks();
+      unsubComplaints();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Subscribe to comments when a task is selected
@@ -66,8 +78,12 @@ export default function TasksPage() {
       const data: any[] = [];
       snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
       setTaskComments(data);
+    }, (error) => {
+      console.warn('Comments query error (index may be needed):', error.message);
+      setTaskComments([]);
     });
     return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTask?.id]);
 
   const getTechName = (uid: string) => {
@@ -89,10 +105,11 @@ export default function TasksPage() {
         assigned_to: taskType === 'assigned' ? assignedTo : null,
         bonus_value: taskType === 'opportunistic' ? parseInt(bonusValue) : 0,
         customer: { name: customerName || null, phone: customerPhone || null, address: customerAddress || null },
+        complaint_id: linkedComplaint || null,
         createdAt: serverTimestamp()
       });
       setSuccessMsg('Signal dispatched successfully.');
-      setTitle(''); setDescription(''); setCustomerName(''); setCustomerPhone(''); setCustomerAddress('');
+      setTitle(''); setDescription(''); setCustomerName(''); setCustomerPhone(''); setCustomerAddress(''); setLinkedComplaint('');
     } catch (err: any) {
       setErrorMsg(err.message || 'Transmission failed.');
     } finally { setIsSubmitting(false); }
@@ -124,13 +141,38 @@ export default function TasksPage() {
   };
 
   const handleApproveTask = async (taskId: string) => {
-    try { await updateDoc(doc(db, 'tasks', taskId), { status: 'completed' }); setSelectedTask(null); } catch (err) { console.error(err); }
+    try {
+      // 1. Complete the task
+      await updateDoc(doc(db, 'tasks', taskId), { status: 'completed' });
+
+      // 2. Auto-resolve the linked complaint (if any)
+      const task = liveTasks.find(t => t.id === taskId);
+      if (task?.complaint_id) {
+        await updateDoc(doc(db, 'complaints', task.complaint_id), {
+          status: 'resolved',
+          resolved_at: serverTimestamp(),
+        });
+      }
+
+      setSelectedTask(null);
+    } catch (err) { console.error(err); }
   };
 
   const handleReassignTask = async (taskId: string) => {
     if (!reassignTo) return;
     try {
-      await updateDoc(doc(db, 'tasks', taskId), { assigned_to: reassignTo, status: 'pending' , completion_proof: null });
+      // 1. Reassign the task
+      await updateDoc(doc(db, 'tasks', taskId), { assigned_to: reassignTo, status: 'pending', completion_proof: null });
+
+      // 2. Update linked complaint assignment (if any)
+      const task = liveTasks.find(t => t.id === taskId);
+      if (task?.complaint_id) {
+        await updateDoc(doc(db, 'complaints', task.complaint_id), {
+          assigned_to: reassignTo,
+          status: 'in_progress',
+        });
+      }
+
       setShowReassign(false); setReassignTo(''); setSelectedTask(null);
     } catch (err) { console.error(err); }
   };
@@ -152,8 +194,11 @@ export default function TasksPage() {
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'pending': return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+      case 'en_route': return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+      case 'on_site': return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
       case 'in_progress': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
       case 'pending_approval': return 'text-orange-400 bg-orange-500/10 border-orange-500/20';
+      case 'completed': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
       default: return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
     }
   };
@@ -198,6 +243,27 @@ export default function TasksPage() {
                     <input value={lng} onChange={(e) => setLng(e.target.value)} className="w-1/2 px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-amber-500 outline-none text-white font-mono text-sm" placeholder="LNG" />
                   </div>
 
+                  {/* Link to Complaint */}
+                  <div className="pt-2 border-t border-white/5">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-medium flex items-center gap-1"><Link2 size={11} /> Link Complaint (Optional)</p>
+                    <select value={linkedComplaint} onChange={(e) => {
+                      setLinkedComplaint(e.target.value);
+                      if (e.target.value) {
+                        const c = complaints.find(x => x.id === e.target.value);
+                        if (c) {
+                          if (!title) setTitle(`Resolve: ${c.title}`);
+                          if (c.location?.latitude) setLat(String(c.location.latitude));
+                          if (c.location?.longitude) setLng(String(c.location.longitude));
+                          if (c.reporter_name) setCustomerName(c.reporter_name);
+                          if (c.reporter_phone) setCustomerPhone(c.reporter_phone);
+                        }
+                      }
+                    }} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-amber-500 outline-none text-white font-medium appearance-none text-sm mb-3">
+                      <option value="" className="bg-slate-800 text-slate-400">No linked complaint</option>
+                      {complaints.map(c => <option key={c.id} value={c.id} className="bg-slate-800">{c.title} — {c.category} [{c.priority}]</option>)}
+                    </select>
+                  </div>
+
                   <div className="pt-2 border-t border-white/5">
                     <p className="text-xs text-slate-500 uppercase tracking-wider mb-3 font-medium">Customer / Report Info</p>
                     <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-amber-500 outline-none text-white font-medium placeholder:text-slate-600 mb-3" placeholder="Customer Name" />
@@ -209,8 +275,26 @@ export default function TasksPage() {
 
                   {taskType === 'assigned' ? (
                     <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-blue-500 outline-none text-white font-medium appearance-none">
-                      <option value="" disabled className="bg-slate-800 text-slate-400">Select Field Technician</option>
-                      {technicians.filter(t => t.current_status !== 'deactivated').map((tech) => (<option key={tech.id} value={tech.id} className="bg-slate-800">{tech.name || tech.id} - {tech.current_status || 'inactive'}</option>))}
+                      <option value="" disabled className="bg-slate-800 text-slate-400">Select Field Technician (Sorted by Proximity)</option>
+                      {(() => {
+                        const taskLat = parseFloat(lat);
+                        const taskLng = parseFloat(lng);
+                        const sortedTechs = [...technicians]
+                          .filter(t => t.current_status !== 'deactivated')
+                          .sort((a, b) => {
+                            if (isNaN(taskLat) || isNaN(taskLng)) return 0;
+                            const distA = Math.sqrt(Math.pow((a.last_known_location?.latitude || 0) - taskLat, 2) + Math.pow((a.last_known_location?.longitude || 0) - taskLng, 2));
+                            const distB = Math.sqrt(Math.pow((b.last_known_location?.latitude || 0) - taskLat, 2) + Math.pow((b.last_known_location?.longitude || 0) - taskLng, 2));
+                            return distA - distB;
+                          });
+                        return sortedTechs.map((tech) => (
+                          <option key={tech.id} value={tech.id} className="bg-slate-800">
+                            {tech.name || tech.id} — {tech.current_status} 
+                            {(!isNaN(taskLat) && !isNaN(taskLng) && tech.last_known_location) ? 
+                              ` (~${(Math.sqrt(Math.pow(tech.last_known_location.latitude-taskLat,2)+Math.pow(tech.last_known_location.longitude-taskLng,2))*111).toFixed(1)} km away)` : ''}
+                          </option>
+                        ));
+                      })()}
                     </select>
                   ) : (
                     <div className="relative">

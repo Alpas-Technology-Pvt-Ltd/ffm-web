@@ -4,7 +4,7 @@ import AuthGuard from '@/components/AuthGuard';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield } from 'lucide-react';
+import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star } from 'lucide-react';
 
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -38,6 +38,7 @@ export default function TechniciansPage() {
       setServiceAreas(data);
     });
     return () => { unsub(); unsubAreas(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getAreaName = (areaId: string) => serviceAreas.find(a => a.id === areaId)?.name || '';
@@ -198,6 +199,11 @@ export default function TechniciansPage() {
                             {t.address && <span className="flex items-center gap-1"><MapPin size={11} /> {t.address}</span>}
                             {areaName && <span className="flex items-center gap-1 text-cyan-400"><Shield size={11} /> {areaName}</span>}
                             <span className="text-slate-600">SLA: {t.sla_score || 0}%</span>
+                            {(t.average_rating !== undefined) && (
+                              <span className="flex items-center gap-1 text-amber-400 font-bold">
+                                <Star size={11} className="fill-amber-400" /> {t.average_rating.toFixed(1)} ({t.total_reviews || 0})
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

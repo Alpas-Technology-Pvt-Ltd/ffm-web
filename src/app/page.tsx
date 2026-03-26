@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 export default function Dashboard() {
   const [activeTechs, setActiveTechs] = useState<any[]>([]);
   const [activeTasks, setActiveTasks] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
 
   useEffect(() => {
     if (!db) return;
@@ -24,7 +25,6 @@ export default function Dashboard() {
       const techs: any[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        // Fallback layout map coordinates mapping latitude/longitude logic to the CSS canvas
         techs.push({
           id: doc.id,
           name: data.name || 'Unknown Tech',
@@ -35,7 +35,6 @@ export default function Dashboard() {
           overtimeRisk: data.total_hours >= 8
         });
       });
-      // Explicitly set real array without Mock Fallback
       setActiveTechs(techs);
     });
 
@@ -59,14 +58,26 @@ export default function Dashboard() {
           lat: data.location?.latitude || 27.7100,
         });
       });
-      // Explicitly set real array without Mock Fallback
       setActiveTasks(tasks);
+    });
+
+    // 3. Stream open complaints
+    const complaintsQuery = query(
+      collection(db, 'complaints'),
+      where('status', '==', 'open')
+    );
+    const unsubscribeComplaints = onSnapshot(complaintsQuery, (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(d => data.push({ id: d.id, ...d.data() }));
+      setComplaints(data);
     });
 
     return () => {
       unsubscribeTechs();
       unsubscribeTasks();
+      unsubscribeComplaints();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -84,9 +95,11 @@ export default function Dashboard() {
         {/* Top Analytics Bar */}
         <header className="glass-panel w-full p-4 px-6 flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-6">
-            <Stat label="Active Techs" value="2" />
+            <Stat label="Active Techs" value={activeTechs.length} />
             <div className="w-px h-8 bg-slate-700/50" />
-            <Stat label="Unclaimed Tasks" value="2" highlight />
+            <Stat label="Unclaimed Tasks" value={activeTasks.length} highlight />
+            <div className="w-px h-8 bg-slate-700/50" />
+            <Stat label="Open Complaints" value={complaints.length} highlight={complaints.length > 0} />
             <div className="w-px h-8 bg-slate-700/50" />
             <Stat label="Map Status" value="Live Sync" indicator="bg-emerald-500" />
           </div>

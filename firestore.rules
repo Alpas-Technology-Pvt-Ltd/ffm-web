@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: check if the authenticated user has a supervisor or hr role
+    function isSupervisorOrHR() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['supervisor', 'hr'];
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isSupervisorOrHR();
+      allow update: if isSupervisorOrHR() || request.auth.uid == userId || (
+        isAuth() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'average_rating', 'total_reviews', 'last_feedback_at', 
+            'rating', 'reviews', 'updatedAt', 'updated_at'
+          ])
+        )
+      );
+      allow delete: if isSupervisorOrHR();
+    }
+
+    // Tasks collection + subcollections (comments)
+    match /tasks/{taskId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isSupervisorOrHR();
+
+      match /comments/{commentId} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+      }
+    }
+
+    // Service Areas
+    match /service_areas/{areaId} {
+      allow read: if isAuth();
+      allow write: if isSupervisorOrHR();
+    }
+
+    // Attendance Logs
+    match /attendance_logs/{logId} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ===== NEW CiviAlert Collections =====
+
+    // Complaints collection + subcollections (comments)
+    match /complaints/{complaintId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isSupervisorOrHR() || (isAuth() && (resource == null || resource.data.assigned_to == request.auth.uid));
+      allow delete: if isSupervisorOrHR();
+
+      match /comments/{commentId} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+      }
+    }
+
+    // Complaint Categories
+    match /complaint_categories/{categoryId} {
+      allow read: if isAuth();
+      allow write: if isSupervisorOrHR();
+    }
+
+    // Feedback & Ratings (Aliased for mobile app compatibility)
+    match /{collectionName}/{docId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && collectionName in ['feedback', 'ratings', 'reviews'];
+      allow update: if isSupervisorOrHR() && collectionName in ['feedback', 'ratings', 'reviews'];
+      allow delete: if isSupervisorOrHR() && collectionName in ['feedback', 'ratings', 'reviews'];
+    }
+  }
+}

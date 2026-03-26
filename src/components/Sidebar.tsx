@@ -1,5 +1,5 @@
 "use client";
-import { AlertCircle, Clock, Map as MapIcon, Users, CheckCircle, LogOut, FileText, History, MapPinned, UserCog } from 'lucide-react';
+import { AlertCircle, Clock, Map as MapIcon, Users, CheckCircle, LogOut, FileText, History, MapPinned, UserCog, MessageSquareWarning, CalendarCheck, Star } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
@@ -41,6 +41,10 @@ export default function Sidebar() {
         <NavItem href="/areas" icon={<MapPinned size={20} />} label="Service Areas" active={pathname === '/areas'} />
         <NavItem href="/technicians" icon={<UserCog size={20} />} label="Technicians" active={pathname === '/technicians'} />
         <NavItem href="/anomalies" icon={<AlertCircle size={20} />} label="Anomalies" active={pathname === '/anomalies'} />
+        <div className="my-3 border-t border-slate-700/30" />
+        <NavItem href="/complaints" icon={<MessageSquareWarning size={20} />} label="Complaints" badge="NEW" active={pathname === '/complaints'} />
+        <NavItem href="/attendance" icon={<CalendarCheck size={20} />} label="Attendance" active={pathname === '/attendance'} />
+        <NavItem href="/feedback" icon={<Star size={20} />} label="Feedback" active={pathname === '/feedback'} />
       </nav>
 
       <div className="mt-auto space-y-4">

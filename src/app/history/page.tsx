@@ -39,6 +39,7 @@ export default function TaskHistoryPage() {
     });
 
     return () => { unsubTechs(); unsubTasks(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getTechName = (uid: string) => {

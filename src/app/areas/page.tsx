@@ -6,7 +6,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { MapPinned, Plus, Trash2, UserPlus, UserMinus, Save, X } from 'lucide-react';
 import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
-import 'mapbox-gl/dist/mapbox-gl.css';
+
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 const AREA_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
@@ -60,6 +60,7 @@ export default function AreasPage() {
       setTechnicians(data);
     });
     return () => { unsubAreas(); unsubTechs(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keep selectedArea in sync with live snapshot data
@@ -68,6 +69,7 @@ export default function AreasPage() {
       const updated = areas.find(a => a.id === selectedArea.id);
       if (updated) setSelectedArea(updated);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areas]);
 
   const getTechName = (uid: string) => {
