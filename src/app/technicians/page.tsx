@@ -4,11 +4,13 @@ import AuthGuard from '@/components/AuthGuard';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star } from 'lucide-react';
+import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star, Users } from 'lucide-react';
 
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [serviceAreas, setServiceAreas] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'deactivated'>('all');
   const [showAdd, setShowAdd] = useState(false);
@@ -37,11 +39,53 @@ export default function TechniciansPage() {
       snapshot.forEach(d => data.push({ id: d.id, ...d.data() }));
       setServiceAreas(data);
     });
-    return () => { unsub(); unsubAreas(); };
+
+    const unsubTeams = onSnapshot(collection(db, 'teams'), (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(d => data.push({ id: d.id, ...d.data() }));
+      setTeams(data);
+    });
+    
+    // Fetch completed tasks to calculate performance metrics
+    const tasksQuery = query(collection(db, 'tasks'), where('status', '==', 'completed'));
+    const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(d => data.push({ id: d.id, ...d.data() }));
+      setCompletedTasks(data);
+    });
+
+    return () => { unsub(); unsubAreas(); unsubTeams(); unsubTasks(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getAreaName = (areaId: string) => serviceAreas.find(a => a.id === areaId)?.name || '';
+  const getTeamName = (techId: string) => teams.find(t => t.members?.includes(techId))?.name || '';
+
+  const getTechMetrics = (techId: string) => {
+    const techTasks = completedTasks.filter(t => t.assigned_to === techId);
+    const count = techTasks.length;
+    let avgResolutionHrs = 0;
+    
+    if (count > 0) {
+      let totalHrs = 0;
+      let validTasks = 0;
+      techTasks.forEach(t => {
+        if (t.createdAt && t.completedAt) {
+          const created = t.createdAt.toDate().getTime();
+          const completed = t.completedAt.toDate().getTime();
+          if (completed > created) {
+            totalHrs += (completed - created) / (1000 * 60 * 60);
+            validTasks++;
+          }
+        }
+      });
+      if (validTasks > 0) {
+        avgResolutionHrs = totalHrs / validTasks;
+      }
+    }
+    
+    return { count, avgResolutionHrs };
+  };
 
   const resetForm = () => {
     setFormName(''); setFormEmail(''); setFormPhone(''); setFormAddress(''); setFormArea('');
@@ -192,13 +236,46 @@ export default function TechniciansPage() {
                             <h3 className="text-white font-bold text-base">{t.name || 'Unnamed'}</h3>
                             {isDeactivated && <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase">Deactivated</span>}
                             {!isDeactivated && t.current_status === 'active' && <span className="w-2 h-2 rounded-full bg-green-400" title="Online" />}
+                            {!isDeactivated && (
+                              <div className="flex gap-2 ml-auto">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase transition-colors ${t.is_busy ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+                                  {t.is_busy ? 'Busy' : 'Free'}
+                                </span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase transition-colors ${t.loaded ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-slate-700/30 border-slate-700/50 text-slate-400'}`}>
+                                  {t.loaded ? 'Loaded' : 'Unloaded'}
+                                </span>
+                              </div>
+                            )}
                           </div>
+                          
+                          {/* Performance Analytics Tags */}
+                          {!isDeactivated && (
+                            <div className="flex items-center gap-2 mt-2 mb-1">
+                              {(() => {
+                                const metrics = getTechMetrics(t.id);
+                                return (
+                                  <>
+                                    <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
+                                      {metrics.count} Tasks Done
+                                    </span>
+                                    {metrics.avgResolutionHrs > 0 && (
+                                      <span className={`px-2 py-0.5 rounded border text-xs font-bold ${metrics.avgResolutionHrs <= 4 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
+                                        ~{metrics.avgResolutionHrs.toFixed(1)}h Avg Time
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-400 flex-wrap">
                             {t.email && <span className="flex items-center gap-1"><Mail size={11} /> {t.email}</span>}
                             {t.phone && <span className="flex items-center gap-1"><Phone size={11} /> {t.phone}</span>}
-                            {t.address && <span className="flex items-center gap-1"><MapPin size={11} /> {t.address}</span>}
-                            {areaName && <span className="flex items-center gap-1 text-cyan-400"><Shield size={11} /> {areaName}</span>}
-                            <span className="text-slate-600">SLA: {t.sla_score || 0}%</span>
+                             {t.address && <span className="flex items-center gap-1"><MapPin size={11} /> {t.address}</span>}
+                             {areaName && <span className="flex items-center gap-1 text-cyan-400"><Shield size={11} /> {areaName}</span>}
+                             {getTeamName(t.id) && <span className="flex items-center gap-1 text-blue-400 font-bold"><Users size={11} /> {getTeamName(t.id)}</span>}
+                             <span className="text-slate-600">SLA: {t.sla_score || 0}%</span>
                             {(t.average_rating !== undefined) && (
                               <span className="flex items-center gap-1 text-amber-400 font-bold">
                                 <Star size={11} className="fill-amber-400" /> {t.average_rating.toFixed(1)} ({t.total_reviews || 0})

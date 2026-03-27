@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [activeTechs, setActiveTechs] = useState<any[]>([]);
   const [activeTasks, setActiveTasks] = useState<any[]>([]);
   const [complaints, setComplaints] = useState<any[]>([]);
+  const [teamCount, setTeamCount] = useState(0);
 
   useEffect(() => {
     if (!db) return;
@@ -30,6 +31,8 @@ export default function Dashboard() {
           name: data.name || 'Unknown Tech',
           status: data.current_status,
           sla: `${data.sla_score || 0}%`,
+          isBusy: data.is_busy || false,
+          isLoaded: data.loaded || false,
           lng: data.last_known_location?.longitude || 85.3240,
           lat: data.last_known_location?.latitude || 27.7172,
           overtimeRisk: data.total_hours >= 8
@@ -72,10 +75,16 @@ export default function Dashboard() {
       setComplaints(data);
     });
 
+    // 4. Stream Teams count
+    const unsubscribeTeams = onSnapshot(collection(db, 'teams'), (snapshot) => {
+      setTeamCount(snapshot.size);
+    });
+
     return () => {
       unsubscribeTechs();
       unsubscribeTasks();
       unsubscribeComplaints();
+      unsubscribeTeams();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -96,6 +105,8 @@ export default function Dashboard() {
         <header className="glass-panel w-full p-4 px-6 flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-6">
             <Stat label="Active Techs" value={activeTechs.length} />
+            <div className="w-px h-8 bg-slate-700/50" />
+            <Stat label="Total Teams" value={teamCount} />
             <div className="w-px h-8 bg-slate-700/50" />
             <Stat label="Unclaimed Tasks" value={activeTasks.length} highlight />
             <div className="w-px h-8 bg-slate-700/50" />
@@ -126,9 +137,13 @@ export default function Dashboard() {
             {activeTechs.map((tech) => (
               <Marker key={`tech-${tech.id}`} longitude={tech.lng} latitude={tech.lat} anchor="bottom">
                 <div className="flex flex-col items-center group/marker hover:z-20 cursor-pointer transition-all duration-300">
-                  <div className="absolute -top-12 opacity-0 group-hover/marker:opacity-100 transition-opacity bg-slate-800 border border-slate-600 text-xs py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap pointer-events-none">
-                    <p className="font-bold text-white tracking-widest uppercase">{tech.name}</p>
-                    <p className="text-slate-400">SLA: {tech.sla}</p>
+                  <div className="absolute -top-16 opacity-0 group-hover/marker:opacity-100 transition-opacity bg-slate-800 border border-slate-600 text-[10px] py-2 px-3 rounded-lg shadow-xl whitespace-nowrap pointer-events-none z-50">
+                    <p className="font-bold text-white tracking-widest uppercase mb-1">{tech.name}</p>
+                    <div className="flex gap-2">
+                       <span className="text-slate-400">SLA: {tech.sla}</span>
+                       <span className={`font-bold ${tech.isBusy ? 'text-orange-400' : 'text-emerald-400'}`}>{tech.isBusy ? 'BUSY' : 'FREE'}</span>
+                       <span className={`font-bold ${tech.isLoaded ? 'text-blue-400' : 'text-slate-500'}`}>{tech.isLoaded ? 'LOADED' : 'UNLOADED'}</span>
+                    </div>
                   </div>
                   <div className="relative">
                     {tech.status === 'on_task' && (

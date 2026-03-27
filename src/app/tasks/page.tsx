@@ -5,11 +5,13 @@ import AuthGuard from '@/components/AuthGuard';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { Zap, Target, Plus, Send, AlertCircle, Edit3, Check, X, MessageSquare, RefreshCcw, User, Phone, MapPin, Clock, Image as ImageIcon, Link2 } from 'lucide-react';
+import { calculateHaversineDistance } from '@/lib/geoUtils';
 
 export default function TasksPage() {
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [liveTasks, setLiveTasks] = useState<any[]>([]);
   const [complaints, setComplaints] = useState<any[]>([]);
+  const [areas, setAreas] = useState<any[]>([]);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [taskComments, setTaskComments] = useState<any[]>([]);
@@ -59,10 +61,18 @@ export default function TasksPage() {
       setComplaints(data);
     });
 
+    // Fetch service areas
+    const unsubAreas = onSnapshot(collection(db, 'service_areas'), (snapshot) => {
+      const data: any[] = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      setAreas(data);
+    });
+
     return () => {
       unsubTechs();
       unsubTasks();
       unsubComplaints();
+      unsubAreas();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -143,7 +153,10 @@ export default function TasksPage() {
   const handleApproveTask = async (taskId: string) => {
     try {
       // 1. Complete the task
-      await updateDoc(doc(db, 'tasks', taskId), { status: 'completed' });
+      await updateDoc(doc(db, 'tasks', taskId), { 
+        status: 'completed',
+        completedAt: serverTimestamp()
+      });
 
       // 2. Auto-resolve the linked complaint (if any)
       const task = liveTasks.find(t => t.id === taskId);
@@ -158,23 +171,76 @@ export default function TasksPage() {
     } catch (err) { console.error(err); }
   };
 
-  const handleReassignTask = async (taskId: string) => {
-    if (!reassignTo) return;
+  const handleReassignTask = async (taskId: string, forceAssignTo?: string) => {
+    const targetTech = forceAssignTo || reassignTo;
+    if (!targetTech) return;
     try {
       // 1. Reassign the task
-      await updateDoc(doc(db, 'tasks', taskId), { assigned_to: reassignTo, status: 'pending', completion_proof: null });
+      await updateDoc(doc(db, 'tasks', taskId), { assigned_to: targetTech, status: 'pending', completion_proof: null });
 
       // 2. Update linked complaint assignment (if any)
       const task = liveTasks.find(t => t.id === taskId);
       if (task?.complaint_id) {
         await updateDoc(doc(db, 'complaints', task.complaint_id), {
-          assigned_to: reassignTo,
+          assigned_to: targetTech,
           status: 'in_progress',
         });
       }
 
       setShowReassign(false); setReassignTo(''); setSelectedTask(null);
     } catch (err) { console.error(err); }
+  };
+
+  const handleAutoReassign = async (task: any) => {
+    if (!task.location?.latitude || !task.location?.longitude) {
+      setErrorMsg('Cannot auto-reassign: Task missing location');
+      return;
+    }
+    
+    const taskLat = parseFloat(task.location.latitude);
+    const taskLng = parseFloat(task.location.longitude);
+    
+    // Find nearest eligible tech
+    const eligibleTechs = technicians.filter(t => {
+      if (t.current_status === 'deactivated' || t.current_status === 'on_task' || !t.last_known_location) return false;
+      if (t.id === task.assigned_to) return false; // Don't reassign to same person
+      
+      // Check Area Coverage
+      if (t.service_area) {
+        const area = areas.find(a => a.id === t.service_area);
+        if (area && area.center && !isNaN(taskLat) && !isNaN(taskLng)) {
+          const distToCenter = calculateHaversineDistance(
+            { latitude: area.center.latitude, longitude: area.center.longitude },
+            { latitude: taskLat, longitude: taskLng }
+          );
+          if (distToCenter > (area.radius_km || 2.0)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    if (eligibleTechs.length === 0) {
+      alert('No eligible technicians available for auto-reassignment in this area.');
+      return;
+    }
+
+    const nearestTech = eligibleTechs.sort((a, b) => {
+      const distA = calculateHaversineDistance(
+        { latitude: a.last_known_location.latitude, longitude: a.last_known_location.longitude },
+        { latitude: taskLat, longitude: taskLng }
+      );
+      const distB = calculateHaversineDistance(
+        { latitude: b.last_known_location.latitude, longitude: b.last_known_location.longitude },
+        { latitude: taskLat, longitude: taskLng }
+      );
+      return distA - distB;
+    })[0];
+
+    if (confirm(`Auto-assign to nearest tech: ${nearestTech.name || nearestTech.id}?`)) {
+      await handleReassignTask(task.id, nearestTech.id);
+    }
   };
 
   const handleSendComment = async (taskId: string) => {
@@ -280,20 +346,50 @@ export default function TasksPage() {
                         const taskLat = parseFloat(lat);
                         const taskLng = parseFloat(lng);
                         const sortedTechs = [...technicians]
-                          .filter(t => t.current_status !== 'deactivated')
+                          .filter(t => {
+                            if (t.current_status === 'deactivated') return false;
+                            
+                            // Check Area Coverage
+                            if (t.service_area) {
+                              const area = areas.find(a => a.id === t.service_area);
+                              if (area && area.center && !isNaN(taskLat) && !isNaN(taskLng)) {
+                                const distToCenter = calculateHaversineDistance(
+                                  { latitude: area.center.latitude, longitude: area.center.longitude },
+                                  { latitude: taskLat, longitude: taskLng }
+                                );
+                                if (distToCenter > (area.radius_km || 2.0)) {
+                                  return false; // Task is outside technician's assigned area
+                                }
+                              }
+                            }
+                            return true;
+                          })
                           .sort((a, b) => {
                             if (isNaN(taskLat) || isNaN(taskLng)) return 0;
-                            const distA = Math.sqrt(Math.pow((a.last_known_location?.latitude || 0) - taskLat, 2) + Math.pow((a.last_known_location?.longitude || 0) - taskLng, 2));
-                            const distB = Math.sqrt(Math.pow((b.last_known_location?.latitude || 0) - taskLat, 2) + Math.pow((b.last_known_location?.longitude || 0) - taskLng, 2));
+                            const distA = calculateHaversineDistance(
+                              { latitude: a.last_known_location?.latitude || 0, longitude: a.last_known_location?.longitude || 0 },
+                              { latitude: taskLat, longitude: taskLng }
+                            );
+                            const distB = calculateHaversineDistance(
+                              { latitude: b.last_known_location?.latitude || 0, longitude: b.last_known_location?.longitude || 0 },
+                              { latitude: taskLat, longitude: taskLng }
+                            );
                             return distA - distB;
                           });
-                        return sortedTechs.map((tech) => (
-                          <option key={tech.id} value={tech.id} className="bg-slate-800">
-                            {tech.name || tech.id} — {tech.current_status} 
-                            {(!isNaN(taskLat) && !isNaN(taskLng) && tech.last_known_location) ? 
-                              ` (~${(Math.sqrt(Math.pow(tech.last_known_location.latitude-taskLat,2)+Math.pow(tech.last_known_location.longitude-taskLng,2))*111).toFixed(1)} km away)` : ''}
-                          </option>
-                        ));
+                        return sortedTechs.map((tech) => {
+                          const dist = (!isNaN(taskLat) && !isNaN(taskLng) && tech.last_known_location) 
+                            ? calculateHaversineDistance(
+                                { latitude: tech.last_known_location.latitude, longitude: tech.last_known_location.longitude },
+                                { latitude: taskLat, longitude: taskLng }
+                              ).toFixed(1)
+                            : null;
+                          return (
+                            <option key={tech.id} value={tech.id} className="bg-slate-800">
+                              {tech.name || tech.id} — {tech.current_status?.replace('_', ' ')}
+                              {dist ? ` (~${dist} km away)` : ''}
+                            </option>
+                          );
+                        });
                       })()}
                     </select>
                   ) : (
@@ -325,7 +421,18 @@ export default function TasksPage() {
                     {/* Title + Status */}
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-xl font-bold text-white">{selectedTask.title}</h3>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                          {selectedTask.title}
+                          {selectedTask.status === 'pending' && selectedTask.createdAt && (
+                            (() => {
+                              const hoursPending = (Date.now() - selectedTask.createdAt.toDate().getTime()) / (1000 * 60 * 60);
+                              if (hoursPending > 2) {
+                                return <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold text-red-400 bg-red-500/10 border border-red-500/20 animate-pulse">Delayed</span>;
+                              }
+                              return null;
+                            })()
+                          )}
+                        </h3>
                         <p className="text-sm text-slate-400 mt-1">{selectedTask.description}</p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-bold border uppercase ${getStatusColor(selectedTask.status)}`}>{selectedTask.status?.replace('_', ' ')}</span>
@@ -356,9 +463,16 @@ export default function TasksPage() {
 
                     {/* Edit Button */}
                     {selectedTask.status !== 'completed' && !editingTask && (
-                      <button onClick={() => setEditingTask({...selectedTask})} className="flex items-center gap-2 text-sm text-slate-400 hover:text-amber-400 transition">
-                        <Edit3 size={14} /> Edit Task Details
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <button onClick={() => setEditingTask({...selectedTask})} className="flex items-center gap-2 text-sm text-slate-400 hover:text-amber-400 transition">
+                          <Edit3 size={14} /> Edit Task Details
+                        </button>
+                        {selectedTask.status === 'pending' && (
+                          <button onClick={() => handleAutoReassign(selectedTask)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-cyan-400 transition">
+                            <Zap size={14} /> Auto-Reassign (Nearest)
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {/* Inline Edit Form */}

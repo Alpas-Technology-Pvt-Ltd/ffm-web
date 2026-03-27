@@ -39,6 +39,7 @@ export default function Sidebar() {
         <NavItem href="/history" icon={<History size={20} />} label="Task History" active={pathname === '/history'} />
         <NavItem href="/reports" icon={<FileText size={20} />} label="Daily Reports" active={pathname === '/reports'} />
         <NavItem href="/areas" icon={<MapPinned size={20} />} label="Service Areas" active={pathname === '/areas'} />
+        <NavItem href="/teams" icon={<Users size={20} />} label="Teams" active={pathname === '/teams'} />
         <NavItem href="/technicians" icon={<UserCog size={20} />} label="Technicians" active={pathname === '/technicians'} />
         <NavItem href="/anomalies" icon={<AlertCircle size={20} />} label="Anomalies" active={pathname === '/anomalies'} />
         <div className="my-3 border-t border-slate-700/30" />
