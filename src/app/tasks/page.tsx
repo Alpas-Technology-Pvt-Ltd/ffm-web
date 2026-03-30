@@ -47,7 +47,8 @@ export default function TasksPage() {
     });
 
     // Fetch ALL tasks that might need attention (including recently completed)
-    const tasksQuery = query(collection(db, 'tasks'), where('status', 'in', ['pending', 'in_progress', 'pending_approval', 'completed']));
+    const tasksQuery = query(collection(db, 'tasks'), where('status', 'in', ['pending', 'en_route', 'on_site', 'in_progress', 'pending_approval', 'completed']));
+
     const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
       const data: any[] = [];
       snapshot.forEach(doc => {
@@ -102,6 +103,17 @@ export default function TasksPage() {
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTask?.id]);
+  
+  // Sync selectedTask with latest data from liveTasks
+  useEffect(() => {
+    if (selectedTask && liveTasks.length > 0) {
+      const updated = liveTasks.find(t => t.id === selectedTask.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedTask)) {
+        setSelectedTask(updated);
+      }
+    }
+  }, [liveTasks, selectedTask]);
+
 
   const getTechName = (uid: string) => {
     const tech = technicians.find(t => t.id === uid);
