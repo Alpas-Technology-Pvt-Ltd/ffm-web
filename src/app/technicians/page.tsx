@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { getSLAThreshold } from '@/lib/slaConfig';
-import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star, Users } from 'lucide-react';
+import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star, Users, AlertCircle } from 'lucide-react';
 
 export default function TechniciansPage() {
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -66,6 +66,7 @@ export default function TechniciansPage() {
     const techTasks = completedTasks.filter(t => t.assigned_to === techId);
     const count = techTasks.length;
     let avgResolutionHrs = 0;
+    let incompleteCount = 0;
     
     if (count > 0) {
       let totalHrs = 0;
@@ -77,7 +78,11 @@ export default function TechniciansPage() {
           if (completed > created) {
             totalHrs += (completed - created) / (1000 * 60 * 60);
             validTasks++;
+          } else {
+            incompleteCount++;
           }
+        } else {
+          incompleteCount++;
         }
       });
       if (validTasks > 0) {
@@ -85,7 +90,7 @@ export default function TechniciansPage() {
       }
     }
     
-    return { count, avgResolutionHrs };
+    return { count, avgResolutionHrs, incompleteCount };
   };
 
   const resetForm = () => {
@@ -256,13 +261,21 @@ export default function TechniciansPage() {
                                 const metrics = getTechMetrics(t.id);
                                 return (
                                   <>
-                                    <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
+                                    <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold flex items-center gap-1">
                                       {metrics.count} Tasks Done
+                                      {metrics.incompleteCount > 0 && (
+                                        <span title={`${metrics.incompleteCount} tasks missing completion timestamps`}>
+                                          <AlertCircle size={10} className="text-amber-500" />
+                                        </span>
+                                      )}
                                     </span>
                                     {metrics.avgResolutionHrs > 0 && (
                                       <span className={`px-2 py-0.5 rounded border text-xs font-bold ${metrics.avgResolutionHrs <= getSLAThreshold('RESOLUTION_HOURS') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
                                         ~{metrics.avgResolutionHrs.toFixed(1)}h Avg Time
                                       </span>
+                                    )}
+                                    {metrics.incompleteCount > 0 && metrics.avgResolutionHrs === 0 && (
+                                      <span className="text-[10px] text-amber-500/60 font-medium italic">Performance untracked (missing data)</span>
                                     )}
                                   </>
                                 );

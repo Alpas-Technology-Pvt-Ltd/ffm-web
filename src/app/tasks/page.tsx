@@ -46,11 +46,17 @@ export default function TasksPage() {
       setTechnicians(data);
     });
 
-    // Fetch ALL non-completed tasks
-    const tasksQuery = query(collection(db, 'tasks'), where('status', 'in', ['pending', 'in_progress', 'pending_approval']));
+    // Fetch ALL tasks that might need attention (including recently completed)
+    const tasksQuery = query(collection(db, 'tasks'), where('status', 'in', ['pending', 'in_progress', 'pending_approval', 'completed']));
     const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
       const data: any[] = [];
-      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
+      snapshot.forEach(doc => {
+        const t = { id: doc.id, ...doc.data() } as any;
+        // We show all non-completed, OR completed tasks that are missing critical SLA data
+        if (t.status !== 'completed' || !t.completedAt || !t.assigned_to) {
+          data.push(t);
+        }
+      });
       setLiveTasks(data);
     });
 
@@ -551,6 +557,36 @@ export default function TasksPage() {
                             <button onClick={() => handleReassignTask(selectedTask.id)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold">Assign</button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Completed BUT Broken Data (Safety Net) */}
+                    {selectedTask.status === 'completed' && (!selectedTask.completedAt || !selectedTask.assigned_to) && (
+                      <div className="p-4 rounded-xl bg-red-500/5 border border-red-500/20 space-y-4">
+                        <div className="flex items-center gap-2 text-red-400 font-bold text-sm uppercase">
+                          <AlertCircle size={16} /> Data Integrity Alert
+                        </div>
+                        <p className="text-xs text-slate-400 font-medium">This task was completed but is missing critical SLA data (technician or timestamp). Fixing this ensures accurate performance metrics.</p>
+                        
+                        <div className="space-y-3">
+                          {!selectedTask.assigned_to && (
+                            <div className="space-y-2">
+                              <p className="text-[10px] text-slate-500 uppercase font-medium">Assign missing technician:</p>
+                              <div className="flex gap-2">
+                                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm outline-none appearance-none">
+                                  <option value="" disabled className="bg-slate-800">Select Technician</option>
+                                  {technicians.filter(t => t.current_status !== 'deactivated').map((tech) => (<option key={tech.id} value={tech.id} className="bg-slate-800">{tech.name || tech.id}</option>))}
+                                </select>
+                                <button onClick={() => handleReassignTask(selectedTask.id)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold">Fix</button>
+                                </div>
+                            </div>
+                          )}
+                          {!selectedTask.completedAt && (
+                            <button onClick={() => handleApproveTask(selectedTask.id)} className="w-full py-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold hover:bg-emerald-500/30 transition">
+                              Fix Missing Completion Timestamp
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 
