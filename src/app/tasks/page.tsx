@@ -4,6 +4,7 @@ import Sidebar from '@/components/Sidebar';
 import AuthGuard from '@/components/AuthGuard';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getSLAThreshold } from '@/lib/slaConfig';
 import { Zap, Target, Plus, Send, AlertCircle, Edit3, Check, X, MessageSquare, RefreshCcw, User, Phone, MapPin, Clock, Image as ImageIcon, Link2 } from 'lucide-react';
 import { calculateHaversineDistance } from '@/lib/geoUtils';
 
@@ -426,8 +427,21 @@ export default function TasksPage() {
                           {selectedTask.status === 'pending' && selectedTask.createdAt && (
                             (() => {
                               const hoursPending = (Date.now() - selectedTask.createdAt.toDate().getTime()) / (1000 * 60 * 60);
-                              if (hoursPending > 2) {
+                              if (hoursPending > getSLAThreshold('RESPONSE_HOURS')) { 
                                 return <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold text-red-400 bg-red-500/10 border border-red-500/20 animate-pulse">Delayed</span>;
+                              }
+                              return null;
+                            })()
+                          )}
+                          {selectedTask.status === 'pending_approval' && selectedTask.completion_proof && (
+                            (() => {
+                              // Use submitted_at if available, otherwise fallback to task creation (though less accurate)
+                              const submittedAt = selectedTask.completion_proof.submitted_at?.toDate() || selectedTask.createdAt?.toDate();
+                              if (submittedAt) {
+                                const minsSinceSubmission = (Date.now() - submittedAt.getTime()) / (1000 * 60);
+                                if (minsSinceSubmission > getSLAThreshold('VALIDATION_MINUTES')) {
+                                  return <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold text-red-400 bg-red-500/10 border border-red-500/20 animate-pulse">Validation Delayed</span>;
+                                }
                               }
                               return null;
                             })()

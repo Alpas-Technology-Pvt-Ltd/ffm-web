@@ -4,6 +4,7 @@ import AuthGuard from '@/components/AuthGuard';
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { getSLAThreshold } from '@/lib/slaConfig';
 import { UserCog, Plus, Edit3, Save, X, Search, UserMinus, UserCheck, Phone, Mail, MapPin, Shield, Star, Users } from 'lucide-react';
 
 export default function TechniciansPage() {
@@ -259,7 +260,7 @@ export default function TechniciansPage() {
                                       {metrics.count} Tasks Done
                                     </span>
                                     {metrics.avgResolutionHrs > 0 && (
-                                      <span className={`px-2 py-0.5 rounded border text-xs font-bold ${metrics.avgResolutionHrs <= 4 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
+                                      <span className={`px-2 py-0.5 rounded border text-xs font-bold ${metrics.avgResolutionHrs <= getSLAThreshold('RESOLUTION_HOURS') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
                                         ~{metrics.avgResolutionHrs.toFixed(1)}h Avg Time
                                       </span>
                                     )}
