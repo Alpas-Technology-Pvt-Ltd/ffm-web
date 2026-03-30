@@ -14,9 +14,9 @@ const STANDARD_THRESHOLDS = {
 };
 
 const TEST_THRESHOLDS = {
-  RESPONSE_HOURS: 0.083, // ~5 minutes
-  RESOLUTION_HOURS: 0.166, // ~10 minutes
-  VALIDATION_MINUTES: 2,   // 2 minutes
+  RESPONSE_HOURS: 0.043, // ~5 minutes
+  RESOLUTION_HOURS: 0.060, // ~10 minutes
+  VALIDATION_MINUTES: 1,   // 2 minutes
 };
 
 export const SLA_CONFIG = SLA_TEST_MODE ? TEST_THRESHOLDS : STANDARD_THRESHOLDS;
